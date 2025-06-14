@@ -228,7 +228,11 @@ EOF
 )
 
     # Build SSH command with optional key
-    ssh_cmd=(ssh)
+    ssh_cmd=(
+        ssh
+        -o StrictHostKeyChecking=no
+        -o UserKnownHostsFile=/dev/null
+    )
     if [ -n "$SSH_KEY" ]; then
         ssh_cmd+=(-i "$SSH_KEY")
     fi
@@ -252,6 +256,8 @@ Wants=network-online.target
 
 [Service]
 ExecStart=/usr/bin/ssh -i ${KEY_PATH} \
+  -o StrictHostKeyChecking=no \
+  -o UserKnownHostsFile=/dev/null \
   -o ServerAliveInterval=60 \
   -o ExitOnForwardFailure=yes \
   -N -R 0.0.0.0:%i:localhost:%i root@${REMOTE_HOST} -p ${REMOTE_PORT}

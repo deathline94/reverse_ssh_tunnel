@@ -23,17 +23,16 @@ A robust and user-friendly script for setting up secure reverse SSH tunnels betw
 ### Quick Start (One-Line Command)
 
 ```bash
-sudo bash <(curl -sSL https://raw.githubusercontent.com/aleskxyz/reverse_ssh_tunnel/main/setup_tunnel.sh) root@192.168.1.100:22 -s 443
+bash <(curl -sSL https://raw.githubusercontent.com/aleskxyz/reverse_ssh_tunnel/main/setup_tunnel.sh) root@192.168.1.100:22 -s 443
 ```
 
 This command will:
 1. Download the script
-2. Execute it with sudo privileges
-3. Set up the reverse tunnel
+2. Set up the reverse tunnel
 
 You can also specify an SSH key:
 ```bash
-sudo bash <(curl -sSL https://raw.githubusercontent.com/aleskxyz/reverse_ssh_tunnel/main/setup_tunnel.sh) root@192.168.1.100:22 -s 443 -i ~/.ssh/id_rsa
+bash <(curl -sSL https://raw.githubusercontent.com/aleskxyz/reverse_ssh_tunnel/main/setup_tunnel.sh) root@192.168.1.100:22 -s 443 -i ~/.ssh/id_rsa
 ```
 
 ### Manual Installation
