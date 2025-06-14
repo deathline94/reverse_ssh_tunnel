@@ -103,9 +103,9 @@ generate_ssh_key() {
     print_section "Generating SSH keypair"
     
     # Check if key already exists and is valid
-    if [ -f "$KEY_PATH" ] && [ -f "$KEY_PATH.pub" ]; then
+    if sudo test -f "$KEY_PATH" && sudo test -f "$KEY_PATH.pub"; then
         # Verify the key is readable and has correct permissions
-        if [ -r "$KEY_PATH" ] && [ "$(stat -c %a "$KEY_PATH")" = "600" ]; then
+        if sudo test -r "$KEY_PATH" && [ "$(sudo stat -c %a "$KEY_PATH")" = "600" ]; then
             print_status "info" "SSH keypair already exists and has correct permissions"
             return 0
         else
@@ -271,7 +271,7 @@ EOF
 
     # Get current service content if file exists
     local service_content=""
-    if [ -f "$REVERSE_TUNNEL_SERVICE" ]; then
+    if sudo test -f "$REVERSE_TUNNEL_SERVICE"; then
         service_content=$(sudo cat "$REVERSE_TUNNEL_SERVICE")
     fi
 
@@ -293,7 +293,7 @@ EOF
     
     # Get current service state
     local service_name="reverse-ssh-tunnel@${SERVICE_PORT}"
-    local is_enabled=$(systemctl is-enabled "$service_name" 2>/dev/null || echo "disabled")
+    local is_enabled=$(sudo systemctl is-enabled "$service_name" 2>/dev/null || echo "disabled")
     
     # Enable service if not enabled
     if [ "$is_enabled" != "enabled" ]; then
@@ -369,7 +369,7 @@ check_sudo_access
 generate_ssh_key
 
 # Get the public key
-PUBLIC_KEY=$(cat ${KEY_PATH}.pub | tr -d '\n' | sed 's/[[:space:]]*$//')
+PUBLIC_KEY=$(sudo cat ${KEY_PATH}.pub | tr -d '\n' | sed 's/[[:space:]]*$//')
 
 # Configure SSH server on remote host and inject public key
 configure_ssh_server
