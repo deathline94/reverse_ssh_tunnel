@@ -26,7 +26,7 @@ A robust script for setting up and maintaining reverse SSH tunnels with automati
 ### Quick Start (One-Line Command)
 
 ```bash
-bash <(curl -sSL https://raw.githubusercontent.com/deathline94/reverse_ssh_tunnel/main/setup_tunnel.sh) root@192.168.1.100:22 -s 443
+bash <(curl -sSL https://raw.githubusercontent.com/deathline94/reverse_ssh_tunnel/main/setup_tunnel.sh)
 ```
 
 This command will:
