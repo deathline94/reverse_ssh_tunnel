@@ -1,6 +1,6 @@
-# Reverse SSH Tunnel Setup Script
+# Reverse SSH Tunnel Setup
 
-A robust and user-friendly script for setting up secure reverse SSH tunnels between servers. This script automates the process of configuring SSH servers, generating and managing SSH keys, and setting up persistent reverse tunnels.
+A robust script for setting up and maintaining reverse SSH tunnels with automatic health checking.
 
 ## 🌟 Features
 
@@ -10,6 +10,8 @@ A robust and user-friendly script for setting up secure reverse SSH tunnels betw
 - **Persistent**: Sets up systemd service for automatic tunnel maintenance
 - **Multi-Service Support**: Configure multiple services on the same remote server
 - **Beautiful Output**: Color-coded status messages and clear progress indicators
+- **Automatic Health Checking**: Checks tunnel accessibility every 10 seconds
+- **Automatic Tunnel Restart**: Restarts tunnel if connection is lost
 
 ## 📋 Prerequisites
 
@@ -17,6 +19,7 @@ A robust and user-friendly script for setting up secure reverse SSH tunnels betw
 - Sudo privileges on both local and remote servers
 - SSH access to the remote server
 - Systemd (for service management)
+- `netcat` (nc) installed on the system
 
 ## 🚀 Installation
 
@@ -65,6 +68,8 @@ chmod +x setup_tunnel.sh
 - `-i SSH_KEY`: (Optional) Path to SSH key for authentication
   - Example: `-i ~/.ssh/id_rsa`
 
+- `-h, --help`: Show help message
+
 ### Example
 
 ```bash
@@ -88,7 +93,27 @@ chmod +x setup_tunnel.sh
    - Enables automatic reconnection
    - Configures proper port forwarding
 
+## 🔍 Health Check
+
+The script sets up a systemd timer that:
+- Runs every 10 seconds
+- Checks if the tunnel is accessible using netcat
+- Automatically restarts the tunnel if the check fails
+- Starts automatically with the system
 
 ## 📝 License
 
 This project is licensed under the GNU General Public License v3.0 - see the [LICENSE](LICENSE) file for details.
+
+## 🔧 Troubleshooting
+
+If you encounter any issues:
+
+1. Ensure `netcat` is installed on your system
+2. Check if you have sudo access
+3. Verify the remote host is accessible
+4. Check the systemd service status:
+```bash
+systemctl status reverse-ssh-tunnel@<PORT>.service
+systemctl status reverse-ssh-healthcheck@<PORT>.timer
+```

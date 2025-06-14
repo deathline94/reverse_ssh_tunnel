@@ -37,6 +37,8 @@ KEY_PATH="/etc/ssh/reverse_ssh_tunnel"
 SSHD_CONFIG_DIR="/etc/ssh/sshd_config.d"
 REVERSE_SSH_CONFIG="${SSHD_CONFIG_DIR}/zzz_reverse_ssh_tunnel.conf"
 REVERSE_TUNNEL_SERVICE="/etc/systemd/system/reverse-ssh-tunnel@.service"
+REVERSE_HEALTHCHECK_SERVICE="/etc/systemd/system/reverse-ssh-healthcheck@.service"
+REVERSE_HEALTHCHECK_TIMER="/etc/systemd/system/reverse-ssh-healthcheck@.timer"
 
 # Function to print status messages
 print_status() {
@@ -96,6 +98,15 @@ check_sudo_access() {
         handle_error "Sudo access required. Please ensure you have sudo privileges."
     fi
     print_status "success" "Sudo access verified"
+}
+
+# Function to check netcat availability
+check_netcat() {
+    print_section "Checking netcat availability"
+    if ! command -v nc >/dev/null 2>&1; then
+        handle_error "Netcat (nc) is not installed. Please install it before running this script."
+    fi
+    print_status "success" "Netcat is available"
 }
 
 # Function to generate SSH keypair
@@ -269,6 +280,36 @@ WantedBy=multi-user.target
 EOF
 )
 
+    # Define the healthcheck service content
+    local healthcheck_content
+    healthcheck_content=$(cat << EOF
+[Unit]
+Description=Health check for reverse SSH tunnel on port %i
+Wants=reverse-ssh-tunnel@%i.service
+
+[Service]
+Type=oneshot
+ExecStart=/bin/bash -c 'nc -z -w 5 ${REMOTE_HOST} %i || systemctl restart reverse-ssh-tunnel@%i.service'
+EOF
+)
+
+    # Define the healthcheck timer content
+    local timer_content
+    timer_content=$(cat << EOF
+[Unit]
+Description=Run SSH tunnel health check on port %i every 10s
+
+[Timer]
+OnBootSec=10
+OnUnitActiveSec=10s
+AccuracySec=1s
+Unit=reverse-ssh-healthcheck@%i.service
+
+[Install]
+WantedBy=timers.target
+EOF
+)
+
     # Get current service content if file exists
     local service_content=""
     if sudo test -f "$REVERSE_TUNNEL_SERVICE"; then
@@ -285,6 +326,16 @@ EOF
         print_status "info" "Service file already exists and is correctly configured"
     fi
 
+    # Create/update healthcheck service
+    print_status "info" "Creating/updating healthcheck service"
+    echo "$healthcheck_content" | sudo tee "$REVERSE_HEALTHCHECK_SERVICE" > /dev/null
+    needs_reload=true
+
+    # Create/update healthcheck timer
+    print_status "info" "Creating/updating healthcheck timer"
+    echo "$timer_content" | sudo tee "$REVERSE_HEALTHCHECK_TIMER" > /dev/null
+    needs_reload=true
+
     # Reload systemd if needed
     if [ "$needs_reload" = true ]; then
         print_status "info" "Reloading systemd"
@@ -293,6 +344,7 @@ EOF
     
     # Get current service state
     local service_name="reverse-ssh-tunnel@${SERVICE_PORT}"
+    local healthcheck_timer="reverse-ssh-healthcheck@${SERVICE_PORT}.timer"
     local is_enabled=$(sudo systemctl is-enabled "$service_name" 2>/dev/null || echo "disabled")
     
     # Enable service if not enabled
@@ -302,6 +354,10 @@ EOF
     else
         print_status "info" "Service is already enabled"
     fi
+
+    # Enable and start healthcheck timer
+    print_status "info" "Enabling and starting healthcheck timer"
+    sudo systemctl enable --now "$healthcheck_timer"
     
     # Try to start the service, but don't fail if it doesn't start
     print_status "info" "Starting reverse tunnel service"
@@ -364,6 +420,9 @@ fi
 
 # Check sudo access
 check_sudo_access
+
+# Check netcat availability
+check_netcat
 
 # Generate SSH keypair
 generate_ssh_key
