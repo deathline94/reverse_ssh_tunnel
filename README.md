@@ -26,7 +26,7 @@ A robust script for setting up and maintaining reverse SSH tunnels with automati
 ### Quick Start (One-Line Command)
 
 ```bash
-bash <(curl -sSL https://raw.githubusercontent.com/aleskxyz/reverse_ssh_tunnel/main/setup_tunnel.sh) root@192.168.1.100:22 -s 443
+bash <(curl -sSL https://raw.githubusercontent.com/deathline94/reverse_ssh_tunnel/main/setup_tunnel.sh) root@192.168.1.100:22 -s 443
 ```
 
 This command will:
@@ -35,14 +35,14 @@ This command will:
 
 You can also specify an SSH key:
 ```bash
-bash <(curl -sSL https://raw.githubusercontent.com/aleskxyz/reverse_ssh_tunnel/main/setup_tunnel.sh) root@192.168.1.100:22 -s 443 -i ~/.ssh/id_rsa
+bash <(curl -sSL https://raw.githubusercontent.com/deathline94/reverse_ssh_tunnel/main/setup_tunnel.sh) root@192.168.1.100:22 -s 443 -i ~/.ssh/id_rsa
 ```
 
 ### Manual Installation
 
 1. Download the script:
 ```bash
-curl -O https://raw.githubusercontent.com/aleskxyz/reverse_ssh_tunnel/main/setup_tunnel.sh
+curl -O https://raw.githubusercontent.com/deathline94/reverse_ssh_tunnel/main/setup_tunnel.sh
 ```
 
 2. Make it executable:
