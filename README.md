@@ -5,6 +5,7 @@ A robust script for setting up and maintaining reverse SSH tunnels with automati
 ## 🌟 Features
 
 - **One-Command Setup**: Configure both local and remote servers with a single command
+- **Management Menu**: Interactive menu to edit, add, remove, or uninstall tunnels when run without arguments
 - **Idempotent**: Safe to run multiple times without side effects
 - **Secure**: Uses ED25519 SSH keys and proper file permissions
 - **Persistent**: Sets up systemd service for automatic tunnel maintenance
@@ -31,11 +32,11 @@ bash <(curl -sSL https://raw.githubusercontent.com/deathline94/reverse_ssh_tunne
 
 This command will:
 1. Download the script
-2. Set up the reverse tunnel
+2. Open the management menu if a setup exists, or prompt for setup details if none exists
 
-You can also specify an SSH key:
+You can also specify arguments for direct setup:
 ```bash
-bash <(curl -sSL https://raw.githubusercontent.com/deathline94/reverse_ssh_tunnel/main/setup_tunnel.sh) root@192.168.1.100:22 -s 443 -i ~/.ssh/id_rsa
+bash <(curl -sSL https://raw.githubusercontent.com/deathline94/reverse_ssh_tunnel/main/setup_tunnel.sh) root@192.168.1.100:22 -s 443
 ```
 
 ### Manual Installation
@@ -53,12 +54,12 @@ chmod +x setup_tunnel.sh
 ## 💻 Usage
 
 ```bash
-./setup_tunnel.sh USER@HOST[:PORT] -s SERVICE_PORT [-i SSH_KEY]
+./setup_tunnel.sh [USER@HOST[:PORT] -s SERVICE_PORT [-i SSH_KEY]]
 ```
 
 ### Arguments
 
-- `USER@HOST[:PORT]`: Connection string for the remote server
+- `USER@HOST[:PORT]`: Connection string for the remote server (optional)
   - Example: `root@192.168.1.100:22`
   - Port is optional (defaults to 22)
 
@@ -70,9 +71,18 @@ chmod +x setup_tunnel.sh
 
 - `-h, --help`: Show help message
 
-### Example
+### Behavior
+
+- **Without arguments**: Opens the management menu if a setup exists, or prompts for setup details (connection string, service port, SSH key) if none exists.
+- **With arguments**: Configures a new tunnel with the provided details.
+
+### Examples
 
 ```bash
+# Interactive setup or management menu
+./setup_tunnel.sh
+
+# CLI-based setup
 ./setup_tunnel.sh root@192.168.1.100:22 -s 443 -i ~/.ssh/id_rsa
 ```
 
