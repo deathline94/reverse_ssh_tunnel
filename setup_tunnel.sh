@@ -62,7 +62,7 @@ show_help() {
     cat << EOF
 ${BOLD}Reverse SSH Tunnel Setup Script${NC}
 
-${DIM}Usage:${NC} $0 USER@HOST[:PORT] -s SERVICE_PORT [-i SSH_KEY]
+${DIM}Usage:${NC} $0 [USER@HOST[:PORT] -s SERVICE_PORT [-i SSH_KEY]] | [-h]
 
 ${BOLD}Arguments:${NC}
   ${GREEN}USER@HOST[:PORT]${NC}    Connection string (e.g., root@192.168.1.100:22)
@@ -72,6 +72,7 @@ ${BOLD}Arguments:${NC}
 
 ${BOLD}Example:${NC}
   $0 root@192.168.1.100:22 -s 443 -i ~/.ssh/id_rsa
+  $0  # Run without arguments to show menu
 
 ${BOLD}Description:${NC}
   This script will:
@@ -750,25 +751,29 @@ main_setup() {
 }
 
 # Main script
-# Check if a setup exists
-if sudo test -f "$KEY_PATH" || sudo ls /etc/systemd/system/reverse-ssh-tunnel@*.service >/dev/null 2>&1; then
-    show_menu
-fi
-
-# Parse arguments for new setup
+# Initialize variables
 CONNECTION_STRING=""
 SERVICE_PORT=""
 SSH_KEY=""
 
+# Parse arguments
 while [[ $# -gt 0 ]]; do
     case $1 in
         -s|--service)
-            SERVICE_PORT="$2"
-            shift 2
+            if [[ $# -gt 1 ]]; then
+                SERVICE_PORT="$2"
+                shift 2
+            else
+                handle_error "Service port value is required after -s"
+            fi
             ;;
         -i|--identity)
-            SSH_KEY="$2"
-            shift 2
+            if [[ $# -gt 1 ]]; then
+                SSH_KEY="$2"
+                shift 2
+            else
+                handle_error "SSH key path is required after -i"
+            fi
             ;;
         -h|--help)
             show_help
@@ -776,30 +781,29 @@ while [[ $# -gt 0 ]]; do
         *)
             if [ -z "$CONNECTION_STRING" ]; then
                 CONNECTION_STRING="$1"
+                shift
             else
                 handle_error "Unexpected argument: $1"
             fi
-            shift
             ;;
     esac
 done
 
-# Validate required arguments
-if [ -z "$CONNECTION_STRING" ]; then
-    handle_error "Connection string is required"
-fi
-
-if [ -z "$SERVICE_PORT" ]; then
-    handle_error "Service port is required"
-fi
-
-# Parse connection string
-if [[ $CONNECTION_STRING =~ ^([^@]+)@([^:]+)(:([0-9]+))?$ ]]; then
-    REMOTE_USER="${BASH_REMATCH[1]}"
-    REMOTE_HOST="${BASH_REMATCH[2]}"
-    REMOTE_PORT="${BASH_REMATCH[4]:-22}"
+# Check if sufficient arguments for direct setup are provided
+if [ -n "$CONNECTION_STRING" ] && [ -n "$SERVICE_PORT" ]; then
+    # Validate connection string format
+    if [[ $CONNECTION_STRING =~ ^([^@]+)@([^:]+)(:([0-9]+))?$ ]]; then
+        REMOTE_USER="${BASH_REMATCH[1]}"
+        REMOTE_HOST="${BASH_REMATCH[2]}"
+        REMOTE_PORT="${BASH_REMATCH[4]:-22}"
+    else
+        handle_error "Invalid connection string format. Expected format: user@host[:port]"
+    fi
+    main_setup
 else
-    handle_error "Invalid connection string format. Expected format: user@host[:port]"
+    # If insufficient arguments, show menu
+    if [ -n "$CONNECTION_STRING" ] || [ -n "$SERVICE_PORT" ]; then
+        print_status "warning" "Incomplete arguments provided. Showing menu instead."
+    fi
+    show_menu
 fi
-
-main_setup
