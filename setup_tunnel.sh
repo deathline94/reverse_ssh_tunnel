@@ -1,3 +1,4 @@
+```bash
 #!/bin/bash
 #
 # Reverse SSH Tunnel Setup Script
@@ -151,7 +152,8 @@ configure_ssh_server() {
     print_section "Configuring SSH server on remote host"
 
     # Create the configuration script
-    local config_script=$(cat << EOF
+    local config_script
+    config_script=$(cat << EOF
 #!/bin/bash
 set -e
 set -u
@@ -187,12 +189,12 @@ if ! sudo -n true > /dev/null 2>&1; then
 fi
 
 # Create config directory if it doesn't exist
-sudo mkdir -p "$SSHD_CONFIG_DIR"
+sudo mkdir -p "\$SSHD_CONFIG_DIR"
 
 # Add Include directive if it doesn't exist
 if ! sudo grep -q "^Include.*sshd_config.d/\*.conf" "/etc/ssh/sshd_config"; then
     print_status "info" "Adding Include directive to main SSH config"
-    echo -e "\n# Include additional configuration files\nInclude $SSHD_CONFIG_DIR/*.conf" | sudo tee -a "/etc/ssh/sshd_config" > /dev/null
+    echo -e "\n# Include additional configuration files\nInclude \$SSHD_CONFIG_DIR/*.conf" | sudo tee -a "/etc/ssh/sshd_config" > /dev/null
     NEEDS_RESTART=true
 fi
 
@@ -223,8 +225,8 @@ sudo mkdir -p /root/.ssh
 sudo chmod 700 /root/.ssh
 
 # Check if key is already in authorized_keys
-if ! sudo grep -q "$PUBLIC_KEY" /root/.ssh/authorized_keys 2>/dev/null; then
-    echo "$PUBLIC_KEY" | sudo tee -a /root/.ssh/authorized_keys > /dev/null
+if ! sudo grep -qF "\$PUBLIC_KEY" /root/.ssh/authorized_keys 2>/dev/null; then
+    echo "\$PUBLIC_KEY" | sudo tee -a /root/.ssh/authorized_keys > /dev/null
     sudo chmod 600 /root/.ssh/authorized_keys
     sudo chown root:root /root/.ssh/authorized_keys
     print_status "success" "Public key added to authorized_keys"
@@ -245,7 +247,7 @@ EOF
 )
 
     # Build SSH command with optional key
-    ssh_cmd=(
+    local ssh_cmd=(
         ssh
         -o StrictHostKeyChecking=no
         -o UserKnownHostsFile=/dev/null
@@ -277,7 +279,7 @@ ExecStart=/usr/bin/ssh -i ${KEY_PATH} \
   -o UserKnownHostsFile=/dev/null \
   -o ServerAliveInterval=60 \
   -o ExitOnForwardFailure=yes \
-  -N -R 0.0.0.0:%i:localhost:%i root@${REMOTE_HOST} -p ${REMOTE_PORT}
+  -N -R 0.0.0.0:%i:localhost:%i ${REMOTE_USER}@${REMOTE_HOST} -p ${REMOTE_PORT}
 Restart=always
 RestartSec=5
 
@@ -351,7 +353,8 @@ EOF
     # Get current service state
     local service_name="reverse-ssh-tunnel@${SERVICE_PORT}"
     local healthcheck_timer="reverse-ssh-healthcheck@${SERVICE_PORT}.timer"
-    local is_enabled=$(sudo systemctl is-enabled "$service_name" 2>/dev/null || echo "disabled")
+    local is_enabled
+    is_enabled=$(sudo systemctl is-enabled "$service_name" 2>/dev/null || echo "disabled")
     
     # Enable service if not enabled
     if [ "$is_enabled" != "enabled" ]; then
@@ -411,7 +414,8 @@ remove_server() {
     local i=1
     local tunnel_array=()
     while read -r tunnel; do
-        local port=${tunnel#reverse-ssh-tunnel@}
+        local port
+        port=${tunnel#reverse-ssh-tunnel@}
         port=${port%.service}
         echo "  $i) Port: $port"
         tunnel_array+=("$port")
@@ -446,7 +450,8 @@ remove_server() {
         # No other tunnels, clean up remote SSH config
         print_status "info" "No other tunnels remain, cleaning up remote SSH configuration"
         if [ -n "${REMOTE_HOST:-}" ] && [ -n "${REMOTE_USER:-}" ] && [ -n "${REMOTE_PORT:-}" ]; then
-            local cleanup_script=$(cat << EOF
+            local cleanup_script
+            cleanup_script=$(cat << EOF
 #!/bin/bash
 set -e
 set -u
@@ -454,39 +459,40 @@ if sudo test -f "$REVERSE_SSH_CONFIG"; then
     sudo rm -f "$REVERSE_SSH_CONFIG"
     sudo systemctl restart sshd
 fi
-if sudo grep -q "^Include.*sshd_config.d/\*.conf" "/etc/ssh/sshd_config"; then
-    sudo sed -i '/^Include.*sshd_config.d\/\*.conf/d' "/etc/ssh/sshd_config"
+if sudo grep -q "^Include.*sshd_config.d/\*.conf" /etc/ssh/sshd_config; then
+    sudo sed -i '/^Include.*sshd_config.d.*$/d' /etc/ssh/sshd_config
     sudo systemctl restart sshd
 fi
 if sudo test -f "/root/.ssh/authorized_keys"; then
-    sudo sed -i '/$(echo "$PUBLIC_KEY" | sed 's/[\/&]/\\&/g')/d' "/root/.ssh/authorized_keys"
-    if [ ! -s "/root/.ssh/authorized_keys" ]; then
-        sudo rm -f "/root/.ssh/authorized_keys"
+    sudo sed -i '\|^${PUBLIC_KEY}$|d' /root/.ssh/authorized_keys
+    if [ ! -s /root/.ssh/authorized_keys ]; then
+        sudo rm -f /root/.ssh/authorized_keys
     fi
 fi
 EOF
 )
-            ssh_cmd=(
+            local ssh_cmd=(
                 ssh
                 -o StrictHostKeyChecking=no
                 -o UserKnownHostsFile=/dev/null
             )
-            if [ -n "${SSH_KEY:-}" ]; then
-                ssh_cmd+=(-i "$SSH_KEY")
+            if [ -n ${REMOTE_HOST} ]; then
+                ssh_cmd=(-i "${SSH_KEY}")
             fi
-            ssh_cmd+=("-p" "$REMOTE_PORT" "${REMOTE_USER}@${REMOTE_HOST}" "bash -s")
-            "${ssh_cmd[@]}" <<< "$cleanup_script" || print_status "warning" "Failed to clean up remote SSH configuration"
+            ssh_cmd=(-p "${REMOTE_PORT}" "${REMOTE_USER}@${REMOTE_HOST}" "bash -s")
+            "${ssh_cmd}" <<< "$cleanup_script" || print_status "warning" "Failed to clean up remote SSH configuration"
+            true
         fi
         
         # Remove SSH keypair and systemd files
         print_status "info" "Removing SSH keypair and systemd service files"
         sudo rm -f "$KEY_PATH" "$KEY_PATH.pub"
-        sudo rm -f "$REVERSE_TUNNEL_SERVICE" "$REVERSE_HEALTHCHECK_SERVICE" "$REVERSE_HEALTHCHECK_TIMER"
-        sudo systemctl daemon-reload
-        sudo systemctl reset-failed || true
+        sudo rm -f "$REVERSE_TUNNEL_SSHD" "$REVERSE_HEALTHCHECK_SSHD" "$REVERSE_HEALTHCHECK@"
+        sudo systemctl systemctl daemon-reload
+        sudo systemctl systemctl reset-failed || true
         
         # Remove local SSHD config directory if empty
-        if sudo test -d "$SSHD_CONFIG_DIR" && ! sudo ls "$SSHD_CONFIG_DIR"/* >/dev/null 2>&1; then
+        if sudo test -d "$SSHD_CONFIG_DIR" && ! sudo ls "$SSHD_CONFIG_DIR/*" >/dev/null 2>&1; then
             sudo rmdir "$SSHD_CONFIG_DIR" || true
         fi
     fi
@@ -500,7 +506,7 @@ edit_tunnel() {
     
     # List existing tunnels
     local tunnels
-    tunnels=$(sudo systemctl list-units --type=service --all "reverse-ssh-tunnel@*" | grep "reverse-ssh-tunnel@" | awk '{print $1}' | sort)
+    tunnels=$(sudo systemctl list-units --type=service --all "reverse-ssh-tunnel@*" | grep -E "reverse-tunnel@" | awk '{print $1}' | sort)
     if [ -z "$tunnels" ]; then
         print_status "warning" "No reverse SSH tunnels found."
         return
@@ -511,10 +517,10 @@ edit_tunnel() {
     local tunnel_array=()
     while read -r tunnel; do
         local port=${tunnel#reverse-ssh-tunnel@}
-        port=${port%.service}
+        port=${port%%.service}
         echo "  $i) Port: $port"
         tunnel_array+=("$port")
-        ((i++))
+        ((i+=1))
     done <<< "$tunnels"
     
     read -p "Select tunnel to edit (1-$((i-1)) or 0 to cancel): " selection
@@ -528,10 +534,10 @@ edit_tunnel() {
     
     local selected_port="${tunnel_array[$((selection-1))]}"
     local service_name="reverse-ssh-tunnel@$selected_port.service"
-    local healthcheck_timer="reverse-ssh-healthcheck@$selected_port.timer"
+    local healthcheck_timer="reverse-ssh-t@$selected_port@@.timer"
     
     # Prompt for new details
-    read -p "Enter new remote host (e.g., 192.168.1.100): " new_host
+    read -r "Enter new remote host (e.g., 192.168.1.100): " new_host
     if [ -z "$new_host" ]; then
         print_status "error" "Remote host is required."
         return
@@ -540,7 +546,7 @@ edit_tunnel() {
     read -p "Enter new SSH port (default 22): " new_ssh_port
     new_ssh_port=${new_ssh_port:-22}
     
-    read -p "Enter new service port (current: $selected_port): " new_service_port
+    read -r "Enter new service port (current: $selected_port): " new_service_port
     new_service_port=${new_service_port:-$selected_port}
     
     # Validate inputs
@@ -548,7 +554,7 @@ edit_tunnel() {
         print_status "error" "Invalid service port."
         return
     fi
-    if ! [[ "$new_ssh_port" =~ ^[0-9]+$ ]] || [ "$new_ssh_port" -lt 1" ] || [ "$new_ssh_port" -gt 65535 ]; then
+    if ! [[ "$new_ssh_port" =~ ^[0-9]+$ ]] || [ "$new_ssh_port" -lt 1 ] || [ "$new_ssh_port" -gt 65535 ]; then
         print_status "error" "Invalid SSH port."
         return
     fi
@@ -572,7 +578,7 @@ ExecStart=/usr/bin/ssh -i ${KEY_PATH} \
   -o UserKnownHostsFile=/dev/null \
   -o ServerAliveInterval=60 \
   -o ExitOnForwardFailure=yes \
-  -N -R 0.0.0.0:%i:localhost:%i root@${new_host} -p ${new_ssh_port}
+  -N -R 0.0.0.0:%i:localhost:%i ${REMOTE_USER}@${new_host} -p ${new_ssh_port}
 Restart=always
 RestartSec=5
 
@@ -664,7 +670,8 @@ uninstall_tunnel() {
     if [ -n "$tunnels" ]; then
         print_status "info" "Stopping and disabling all tunnel services"
         while read -r tunnel; do
-            local port=${tunnel#reverse-ssh-tunnel@}
+            local port
+            port=${tunnel#reverse-ssh-tunnel@}
             port=${port%.service}
             sudo systemctl stop "reverse-ssh-tunnel@${port}.service" || true
             sudo systemctl stop "reverse-ssh-healthcheck@${port}.timer" || true
@@ -684,9 +691,10 @@ uninstall_tunnel() {
     sudo rm -f "$KEY_PATH" "$KEY_PATH.pub"
     
     # Remove remote SSH configuration
-    if [ -n "${REMOTE_HOST:-}" ] && [ -n "${REMOTE_USER}" :- ] && [ -n "${REMOTE_PORT:-}" ]; then
+    if [ -n "${REMOTE_HOST:-}" ] && [ -n "${REMOTE_USER:-}" ] && [ -n "${REMOTE_PORT:-}" ]; then
         print_status "info" "Attempting to clean up remote SSH configuration"
-        local cleanup_script=$(cat << EOF
+        local cleanup_script
+        cleanup_script=$(cat << EOF
 #!/bin/bash
 set -e
 set -u
@@ -694,27 +702,27 @@ if sudo test -f "$REVERSE_SSH_CONFIG"; then
     sudo rm -f "$REVERSE_SSH_CONFIG"
     sudo systemctl restart sshd
 fi
-if sudo grep -q "^Include.*sshd_config.d/\*.conf" "/etc/ssh/sshd_config"; then
-    sudo sed -i '/^Include.*sshd_config.d\/\*.conf/d' "/etc/ssh/sshd_config"
+if sudo grep -q "^Include.*sshd_config.d/\*.conf" /etc/ssh/sshd_config; then
+    sudo sed -i '/^Include.*sshd_config.d.*$/d' /etc/ssh/sshd_config
     sudo systemctl restart sshd
 fi
-if sudo test -f "/root/.ssh/authorized_keys"; then
-    sudo sed -i '/$(echo "$PUBLIC_KEY" | sed 's/[\/&]/\\&/g')/d' "/root/.ssh/authorized_keys"
-    if [ ! -s "/root/.ssh/authorized_keys" ]; then
-        sudo rm -f "/root/.ssh/authorized_keys"
+if sudo test -f /root/.ssh/authorized_keys; then
+    sudo sed -i '\|^${PUBLIC_KEY}$|d' /root/.ssh/authorized_keys
+    if [ ! -s /root/.ssh/authorized_keys ]; then
+        sudo rm -f /root/.ssh/authorized_keys
     fi
 fi
 EOF
 )
-        ssh_cmd=(
+        local ssh_cmd=(
             ssh
             -o StrictHostKeyChecking=no
             -o UserKnownHostsFile=/dev/null
         )
-        if [ -n "${SSH_KEY}" ]; then
+        if [ -n "${SSH_KEY:-}" ]; then
             ssh_cmd+=(-i "$SSH_KEY")
         fi
-        ssh_cmd+=(-p "$REMOTE_PORT" "${REMOTE_USER}@${REMOTE_HOST}" "bash -s")
+        ssh_cmd+=("-p" "$REMOTE_PORT" "${REMOTE_USER}@${REMOTE_HOST}" "bash -s")
         "${ssh_cmd[@]}" <<< "$cleanup_script" || print_status "warning" "Failed to clean up remote SSH configuration"
     fi
     
@@ -739,13 +747,12 @@ main_setup() {
     generate_ssh_key
     
     # Get the public key
-    PUBLIC_KEY=$(sudo cat ${KEY_PATH}.pub | tr -d '\n' | sed 's/[[:space:]]*)$//')
+    PUBLIC_KEY=$(sudo cat "${KEY_PATH}.pub" | tr -d '\n')
     
     # Configure SSH server on remote host and inject public key
     configure_ssh_server
     
     # Setup reverse tunnel
-    
     setup_reverse_tunnel
     
     print_section "Setup Summary"
@@ -754,7 +761,7 @@ main_setup() {
     echo -e "  ${DIM}Remote Host:${NC} ${GREEN}${REMOTE_HOST}${NC}"
     echo -e "  ${DIM}Service Port:${NC} ${GREEN}${SERVICE_PORT}${NC}"
     echo -e "  ${DIM}SSH Port:${NC} ${GREEN}${REMOTE_PORT}${NC}"
-    echo -e "\n${BOLD}You can now connect to the ${service on:${NC} ${GREEN}${REMOTE_HOST}${NC}NC:${NC}:${GREEN}${SERVICE_PORT}${NC}"
+    echo -e "\n${BOLD}You can now connect to the service on:${NC} ${GREEN}${REMOTE_HOST}:${SERVICE_PORT}${NC}"
 }
 
 # Main script
@@ -767,7 +774,7 @@ if [ $# -eq 0 ]; then
         # No setup exists, prompt for details
         print_section "New Reverse SSH Tunnel Setup"
         read -p "Enter connection string (e.g., root@192.168.1.100[:22]): " CONNECTION_STRING
-        read -p "Enter service port: " SERVICE_PORT_PORT
+        read -p "Enter service port: " SERVICE_PORT
         read -p "Enter path to SSH key (optional, press enter to skip): " SSH_KEY
         
         # Validate inputs
@@ -838,3 +845,4 @@ else
     
     main_setup
 fi
+```
