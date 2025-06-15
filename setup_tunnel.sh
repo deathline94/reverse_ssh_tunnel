@@ -372,18 +372,119 @@ show_menu() {
         echo -e "${BOLD}Available Options:${NC}"
         echo -e "  ${GREEN}1)${NC} Edit existing tunnel"
         echo -e "  ${GREEN}2)${NC} Add new server"
-        echo -e "  ${GREEN}3)${NC} Uninstall"
-        echo -e "  ${GREEN}4)${NC} Exit"
+        echo -e "  ${GREEN}3)${NC} Remove a server"
+        echo -e "  ${GREEN}4)${NC} Uninstall"
+        echo -e "  ${GREEN}5)${NC} Exit"
         echo ""
-        read -p "Enter your choice [1-4]: " choice
+        read -p "Enter your choice [1-5]: " choice
         case "$choice" in
             1) edit_tunnel ;;
             2) add_new_server ;;
-            3) uninstall_tunnel ;;
-            4) exit 0 ;;
-            *) print_status "error" "Invalid choice. Please select 1-4." ;;
+            3) remove_server ;;
+            4) uninstall_tunnel ;;
+            5) exit 0 ;;
+            *) print_status "error" "Invalid choice. Please select 1-5." ;;
         esac
     done
+}
+
+# Function to remove a server
+remove_server() {
+    print_section "Remove a Server"
+    
+    # List existing tunnels
+    local tunnels
+    tunnels=$(sudo systemctl list-units --type=service --all "reverse-ssh-tunnel@*" | grep "reverse-ssh-tunnel@" | awk '{print $1}' | sort)
+    if [ -z "$tunnels" ]; then
+        print_status "warning" "No reverse SSH tunnels found."
+        return
+    fi
+    
+    echo -e "${BOLD}Available Tunnels:${NC}"
+    local i=1
+    local tunnel_array=()
+    while read -r tunnel; do
+        local port=${tunnel#reverse-ssh-tunnel@}
+        port=${port%.service}
+        echo "  $i) Port: $port"
+        tunnel_array+=("$port")
+        ((i++))
+    done <<< "$tunnels"
+    
+    read -p "Select tunnel to remove (1-$((i-1)) or 0 to cancel): " selection
+    if [ "$selection" -eq 0 ]; then
+        return
+    fi
+    if [ "$selection" -lt 1 ] || [ "$selection" -ge "$i" ]; then
+        print_status "error" "Invalid selection."
+        return
+    fi
+    
+    local selected_port="${tunnel_array[$((selection-1))]}"
+    local service_name="reverse-ssh-tunnel@${selected_port}.service"
+    local healthcheck_timer="reverse-ssh-healthcheck@${selected_port}.timer"
+    
+    # Stop and disable services
+    print_status "info" "Stopping and disabling services"
+    sudo systemctl stop "$service_name" || true
+    sudo systemctl stop "$healthcheck_timer" || true
+    sudo systemctl disable "$service_name" || true
+    sudo systemctl disable "$healthcheck_timer" || true
+    
+    # Check if other tunnels exist
+    local remaining_tunnels
+    remaining_tunnels=$(sudo systemctl list-units --type=service --all "reverse-ssh-tunnel@*" | grep -v "$service_name" | grep "reverse-ssh-tunnel@" | wc -l)
+    
+    if [ "$remaining_tunnels" -eq 0 ]; then
+        # No other tunnels, clean up remote SSH config
+        print_status "info" "No other tunnels remain, cleaning up remote SSH configuration"
+        if [ -n "${REMOTE_HOST:-}" ] && [ -n "${REMOTE_USER:-}" ] && [ -n "${REMOTE_PORT:-}" ]; then
+            local cleanup_script=$(cat << EOF
+#!/bin/bash
+set -e
+set -u
+if sudo test -f "$REVERSE_SSH_CONFIG"; then
+    sudo rm -f "$REVERSE_SSH_CONFIG"
+    sudo systemctl restart sshd
+fi
+if sudo grep -q "^Include.*sshd_config.d/\*.conf" "/etc/ssh/sshd_config"; then
+    sudo sed -i '/^Include.*sshd_config.d\/\*.conf/d' "/etc/ssh/sshd_config"
+    sudo systemctl restart sshd
+fi
+if sudo test -f "/root/.ssh/authorized_keys"; then
+    sudo sed -i '/$(echo "$PUBLIC_KEY" | sed 's/[\/&]/\\&/g')/d' "/root/.ssh/authorized_keys"
+    if [ ! -s "/root/.ssh/authorized_keys" ]; then
+        sudo rm -f "/root/.ssh/authorized_keys"
+    fi
+fi
+EOF
+)
+            ssh_cmd=(
+                ssh
+                -o StrictHostKeyChecking=no
+                -o UserKnownHostsFile=/dev/null
+            )
+            if [ -n "${SSH_KEY:-}" ]; then
+                ssh_cmd+=(-i "$SSH_KEY")
+            fi
+            ssh_cmd+=("-p" "$REMOTE_PORT" "${REMOTE_USER}@${REMOTE_HOST}" "bash -s")
+            "${ssh_cmd[@]}" <<< "$cleanup_script" || print_status "warning" "Failed to clean up remote SSH configuration"
+        fi
+        
+        # Remove SSH keypair and systemd files
+        print_status "info" "Removing SSH keypair and systemd service files"
+        sudo rm -f "$KEY_PATH" "$KEY_PATH.pub"
+        sudo rm -f "$REVERSE_TUNNEL_SERVICE" "$REVERSE_HEALTHCHECK_SERVICE" "$REVERSE_HEALTHCHECK_TIMER"
+        sudo systemctl daemon-reload
+        sudo systemctl reset-failed || true
+        
+        # Remove local SSHD config directory if empty
+        if sudo test -d "$SSHD_CONFIG_DIR" && ! sudo ls "$SSHD_CONFIG_DIR"/* >/dev/null 2>&1; then
+            sudo rmdir "$SSHD_CONFIG_DIR" || true
+        fi
+    fi
+    
+    print_status "success" "Server on port $selected_port removed successfully"
 }
 
 # Function to edit existing tunnel
