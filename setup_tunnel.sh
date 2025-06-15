@@ -62,15 +62,22 @@ show_help() {
     cat << EOF
 ${BOLD}Reverse SSH Tunnel Setup Script${NC}
 
-${DIM}Usage:${NC} $0 USER@HOST[:PORT] -s SERVICE_PORT [-i SSH_KEY]
+${DIM}Usage:${NC} $0 [USER@HOST[:PORT] -s SERVICE_PORT [-i SSH_KEY]]
 
 ${BOLD}Arguments:${NC}
-  ${GREEN}USER@HOST[:PORT]${NC}    Connection string (e.g., root@192.168.1.100:22)
+  ${GREEN}USER@HOST[:PORT]${NC}    Connection string (e.g., root@192.168.1.100:22, optional)
   ${GREEN}-s SERVICE_PORT${NC}     Port for the reverse SSH tunnel service
   ${GREEN}-i SSH_KEY${NC}         Path to SSH key for authentication (optional)
   ${GREEN}-h, --help${NC}         Show this help message
 
-${BOLD}Example:${NC}
+${BOLD}Behavior:${NC}
+- Without arguments: Opens management menu if setup exists, or prompts for setup details if none.
+- With arguments: Configures a new tunnel with provided details.
+
+${BOLD}Examples:${NC}
+  # Interactive setup or menu
+  $0
+  # CLI-based setup
   $0 root@192.168.1.100:22 -s 443 -i ~/.ssh/id_rsa
 
 ${BOLD}Description:${NC}
@@ -520,8 +527,8 @@ edit_tunnel() {
     fi
     
     local selected_port="${tunnel_array[$((selection-1))]}"
-    local service_name="reverse-ssh-tunnel@${selected_port}.service"
-    local healthcheck_timer="reverse-ssh-healthcheck@${selected_port}.timer"
+    local service_name="reverse-ssh-tunnel@$selected_port.service"
+    local healthcheck_timer="reverse-ssh-healthcheck@$selected_port.timer"
     
     # Prompt for new details
     read -p "Enter new remote host (e.g., 192.168.1.100): " new_host
@@ -541,7 +548,7 @@ edit_tunnel() {
         print_status "error" "Invalid service port."
         return
     fi
-    if ! [[ "$new_ssh_port" =~ ^[0-9]+$ ]] || [ "$new_ssh_port" -lt 1 ] || [ "$new_ssh_port" -gt 65535 ]; then
+    if ! [[ "$new_ssh_port" =~ ^[0-9]+$ ]] || [ "$new_ssh_port" -lt 1" ] || [ "$new_ssh_port" -gt 65535 ]; then
         print_status "error" "Invalid SSH port."
         return
     fi
@@ -677,7 +684,7 @@ uninstall_tunnel() {
     sudo rm -f "$KEY_PATH" "$KEY_PATH.pub"
     
     # Remove remote SSH configuration
-    if [ -n "${REMOTE_HOST:-}" ] && [ -n "${REMOTE_USER:-}" ] && [ -n "${REMOTE_PORT:-}" ]; then
+    if [ -n "${REMOTE_HOST:-}" ] && [ -n "${REMOTE_USER}" :- ] && [ -n "${REMOTE_PORT:-}" ]; then
         print_status "info" "Attempting to clean up remote SSH configuration"
         local cleanup_script=$(cat << EOF
 #!/bin/bash
@@ -704,10 +711,10 @@ EOF
             -o StrictHostKeyChecking=no
             -o UserKnownHostsFile=/dev/null
         )
-        if [ -n "${SSH_KEY:-}" ]; then
+        if [ -n "${SSH_KEY}" ]; then
             ssh_cmd+=(-i "$SSH_KEY")
         fi
-        ssh_cmd+=("-p" "$REMOTE_PORT" "${REMOTE_USER}@${REMOTE_HOST}" "bash -s")
+        ssh_cmd+=(-p "$REMOTE_PORT" "${REMOTE_USER}@${REMOTE_HOST}" "bash -s")
         "${ssh_cmd[@]}" <<< "$cleanup_script" || print_status "warning" "Failed to clean up remote SSH configuration"
     fi
     
@@ -732,12 +739,13 @@ main_setup() {
     generate_ssh_key
     
     # Get the public key
-    PUBLIC_KEY=$(sudo cat ${KEY_PATH}.pub | tr -d '\n' | sed 's/[[:space:]]*$//')
+    PUBLIC_KEY=$(sudo cat ${KEY_PATH}.pub | tr -d '\n' | sed 's/[[:space:]]*)$//')
     
     # Configure SSH server on remote host and inject public key
     configure_ssh_server
     
     # Setup reverse tunnel
+    
     setup_reverse_tunnel
     
     print_section "Setup Summary"
@@ -746,60 +754,87 @@ main_setup() {
     echo -e "  ${DIM}Remote Host:${NC} ${GREEN}${REMOTE_HOST}${NC}"
     echo -e "  ${DIM}Service Port:${NC} ${GREEN}${SERVICE_PORT}${NC}"
     echo -e "  ${DIM}SSH Port:${NC} ${GREEN}${REMOTE_PORT}${NC}"
-    echo -e "\n${BOLD}You can now connect to the service on:${NC} ${GREEN}${REMOTE_HOST}:${SERVICE_PORT}${NC}"
+    echo -e "\n${BOLD}You can now connect to the ${service on:${NC} ${GREEN}${REMOTE_HOST}${NC}NC:${NC}:${GREEN}${SERVICE_PORT}${NC}"
 }
 
 # Main script
 # Check if a setup exists
-if sudo test -f "$KEY_PATH" || sudo ls /etc/systemd/system/reverse-ssh-tunnel@*.service >/dev/null 2>&1; then
-    show_menu
-fi
-
-# Parse arguments for new setup
-CONNECTION_STRING=""
-SERVICE_PORT=""
-SSH_KEY=""
-
-while [[ $# -gt 0 ]]; do
-    case $1 in
-        -s|--service)
-            SERVICE_PORT="$2"
-            shift 2
-            ;;
-        -i|--identity)
-            SSH_KEY="$2"
-            shift 2
-            ;;
-        -h|--help)
-            show_help
-            ;;
-        *)
-            if [ -z "$CONNECTION_STRING" ]; then
-                CONNECTION_STRING="$1"
-            else
-                handle_error "Unexpected argument: $1"
-            fi
-            shift
-            ;;
-    esac
-done
-
-# Validate required arguments
-if [ -z "$CONNECTION_STRING" ]; then
-    handle_error "Connection string is required"
-fi
-
-if [ -z "$SERVICE_PORT" ]; then
-    handle_error "Service port is required"
-fi
-
-# Parse connection string
-if [[ $CONNECTION_STRING =~ ^([^@]+)@([^:]+)(:([0-9]+))?$ ]]; then
-    REMOTE_USER="${BASH_REMATCH[1]}"
-    REMOTE_HOST="${BASH_REMATCH[2]}"
-    REMOTE_PORT="${BASH_REMATCH[4]:-22}"
+if [ $# -eq 0 ]; then
+    # No arguments, check for existing setup
+    if sudo test -f "$KEY_PATH" || sudo ls /etc/systemd/system/reverse-ssh-tunnel@*.service >/dev/null 2>&1; then
+        show_menu
+    else
+        # No setup exists, prompt for details
+        print_section "New Reverse SSH Tunnel Setup"
+        read -p "Enter connection string (e.g., root@192.168.1.100[:22]): " CONNECTION_STRING
+        read -p "Enter service port: " SERVICE_PORT_PORT
+        read -p "Enter path to SSH key (optional, press enter to skip): " SSH_KEY
+        
+        # Validate inputs
+        if [ -z "$CONNECTION_STRING" ]; then
+            handle_error "Connection string is required."
+        fi
+        if [ -z "$SERVICE_PORT" ]; then
+            handle_error "Service port is required."
+        fi
+        
+        # Parse connection string
+        if [[ $CONNECTION_STRING =~ ^([^@]+)@([^:]+)(:([0-9]+))?$ ]]; then
+            REMOTE_USER="${BASH_REMATCH[1]}"
+            REMOTE_HOST="${BASH_REMATCH[2]}"
+            REMOTE_PORT="${BASH_REMATCH[4]:-22}"
+        else
+            handle_error "Invalid connection string format. Expected format: user@host[:port]"
+        fi
+        
+        main_setup
+    fi
 else
-    handle_error "Invalid connection string format. Expected format: user@host[:port]"
+    # Parse arguments for new setup
+    CONNECTION_STRING=""
+    SERVICE_PORT=""
+    SSH_KEY=""
+    
+    while [[ $# -gt 0 ]]; do
+        case $1 in
+            -s|--service)
+                SERVICE_PORT="$2"
+                shift 2
+                ;;
+            -i|--identity)
+                SSH_KEY="$2"
+                shift 2
+                ;;
+            -h|--help)
+                show_help
+                ;;
+            *)
+                if [ -z "$CONNECTION_STRING" ]; then
+                    CONNECTION_STRING="$1"
+                else
+                    handle_error "Unexpected argument: $1"
+                fi
+                shift
+                ;;
+        esac
+    done
+    
+    # Validate required arguments
+    if [ -z "$CONNECTION_STRING" ]; then
+        handle_error "Connection string is required"
+    fi
+    if [ -z "$SERVICE_PORT" ]; then
+        handle_error "Service port is required"
+    fi
+    
+    # Parse connection string
+    if [[ $CONNECTION_STRING =~ ^([^@]+)@([^:]+)(:([0-9]+))?$ ]]; then
+        REMOTE_USER="${BASH_REMATCH[1]}"
+        REMOTE_HOST="${BASH_REMATCH[2]}"
+        REMOTE_PORT="${BASH_REMATCH[4]:-22}"
+    else
+        handle_error "Invalid connection string format. Expected format: user@host[:port]"
+    fi
+    
+    main_setup
 fi
-
-main_setup
